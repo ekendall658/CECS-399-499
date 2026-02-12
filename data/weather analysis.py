@@ -29,7 +29,7 @@ df= df.replace(-9999, np.nan)
 #selecting columns
 df = df[["DATE","TMAX","TMIN","TAVG","PRCP","AWND"]]
 
-#Show the first few rows of the cleaned data
+#Show the first five rows of the cleaned data
 print(df.head())
 
 #Sort the data by date
@@ -78,4 +78,3 @@ print("Extreme heat days (>95F):", len(extreme_heat))
 extreme_cold = df[df["TMIN"] < 32]
 print("Extreme cold days (<32F):", len(extreme_cold))   
 
-print(df)
