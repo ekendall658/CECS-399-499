@@ -1,7 +1,10 @@
 import pandas as pd
 
 def merge_energy_weather(energy_df, weather_df):
-    energy_df["DATE"] = pd.to_datetime(energy_df["DATE"])
-    weather_df["DATE"] = pd.to_datetime(weather_df["DATE"])
-    merged = energy_df.merge(weather_df, on="DATE", how="inner")
+    # Ensure timestamp columns are datetime
+    energy_df["timestamp"] = pd.to_datetime(energy_df["timestamp"])
+    weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"])
+
+    # Merge on hourly timestamp
+    merged = energy_df.merge(weather_df, on="timestamp", how="inner")
     return merged
