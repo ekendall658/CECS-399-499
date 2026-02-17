@@ -6,7 +6,7 @@ import requests
 import pandas as pd
 
 from prefect import flow, task, get_run_logger
-from prefect.server.schemas.schedules import RRuleSchedule  # Prefect 3 schedule object
+from prefect.client.schemas.schedules import RRuleSchedule  # Prefect 3 schedule object
 
 TZ = pytz.timezone("America/New_York")
 
