@@ -3,3 +3,4 @@ requests>=2.31.0
 pandas>=2.0.0
 pytz>=2023.3
 pyarrow>=14.0.0
+griffe<1.0
