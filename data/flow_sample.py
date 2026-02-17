@@ -61,6 +61,9 @@ def prefect_sample_eia_flow_to_csv() -> str:
 
 
 def today_at(hour: int, minute: int = 0) -> datetime:
+    """
+    Returns timezone-aware datetime for today at hour:minute in America/New_York.
+    """
     d = date.today()
     dt = datetime.combine(d, dtime(hour, minute))
     return TZ.localize(dt)
@@ -68,16 +71,22 @@ def today_at(hour: int, minute: int = 0) -> datetime:
 
 def schedule_one_time_run(deployment_name: str, dtstart: datetime) -> None:
     """
-    Create a one-time scheduled deployment (COUNT=1) that will create exactly one flow run at dtstart.
+    Prefect 3: RRuleSchedule does NOT accept dtstart as a field.
+    Put DTSTART inside the rrule string, then RRULE with COUNT=1.
     """
-    # One-time schedule using COUNT=1
-    schedule = RRuleSchedule(
-        rrule="FREQ=MINUTELY;INTERVAL=1;COUNT=1",
-        timezone="America/New_York",
-        dtstart=dtstart,
+    # Local time in NY, no trailing "Z" because we supply timezone separately
+    dtstart_str = dtstart.strftime("%Y%m%dT%H%M%S")
+
+    rrule_text = (
+        f"DTSTART:{dtstart_str}\n"
+        "RRULE:FREQ=MINUTELY;INTERVAL=1;COUNT=1"
     )
 
-    # Use a work pool (default to "default"); keep build/push off for local/dev
+    schedule = RRuleSchedule(
+        rrule=rrule_text,
+        timezone="America/New_York",
+    )
+
     work_pool = os.getenv("PREFECT_WORK_POOL", "default")
 
     prefect_sample_eia_flow_to_csv.deploy(
@@ -110,4 +119,5 @@ def create_today_schedules() -> None:
 
 
 if __name__ == "__main__":
+    # Creates one-time runs for future target times; runs immediately if already passed.
     create_today_schedules()
