@@ -1,12 +1,12 @@
 import os
-from datetime import datetime, date, time
+from datetime import datetime, date, time as dtime
+
 import pytz
 import requests
 import pandas as pd
 
 from prefect import flow, task, get_run_logger
-from prefect.deployments import Deployment
-from prefect.server.schemas.schedules import RRuleSchedule
+from prefect.server.schemas.schedules import RRuleSchedule  # Prefect 3 schedule object
 
 TZ = pytz.timezone("America/New_York")
 
@@ -20,10 +20,10 @@ OUT_CSV = "prefect_sample_eia.csv"
 
 
 @task(retries=3, retry_delay_seconds=10)
-def fetch_eia():
+def fetch_eia() -> pd.DataFrame:
     api_key = os.getenv("EK_EIA_API")
     if not api_key:
-        raise RuntimeError(" Ella API key not working :( )")
+        raise RuntimeError("EK_EIA_API env var not set")
 
     r = requests.get(EIA_URL, params={"api_key": api_key}, timeout=60)
     r.raise_for_status()
@@ -34,7 +34,7 @@ def fetch_eia():
 
 
 @task
-def append_to_csv(df):
+def append_to_csv(df: pd.DataFrame) -> str:
     logger = get_run_logger()
 
     if df is None or df.empty:
@@ -52,7 +52,7 @@ def append_to_csv(df):
 
 
 @flow(name="prefect_sample_eia_flow_to_csv")
-def prefect_sample_eia_flow_to_csv():
+def prefect_sample_eia_flow_to_csv() -> str:
     logger = get_run_logger()
     logger.info("Requesting: %s", EIA_URL)
 
@@ -60,33 +60,39 @@ def prefect_sample_eia_flow_to_csv():
     return append_to_csv(df)
 
 
-def today_at(hour, minute=0):
+def today_at(hour: int, minute: int = 0) -> datetime:
     d = date.today()
-    dt = datetime.combine(d, time(hour, minute))
+    dt = datetime.combine(d, dtime(hour, minute))
     return TZ.localize(dt)
 
 
-def schedule_one_time_run(deployment_name, dtstart):
-    # One-time schedule using COUNT=1 (runs once at dtstart)
+def schedule_one_time_run(deployment_name: str, dtstart: datetime) -> None:
+    """
+    Create a one-time scheduled deployment (COUNT=1) that will create exactly one flow run at dtstart.
+    """
+    # One-time schedule using COUNT=1
     schedule = RRuleSchedule(
         rrule="FREQ=MINUTELY;INTERVAL=1;COUNT=1",
         timezone="America/New_York",
         dtstart=dtstart,
     )
 
-    dep = Deployment.build_from_flow(
-        flow=prefect_sample_eia_flow_to_csv,
+    # Use a work pool (default to "default"); keep build/push off for local/dev
+    work_pool = os.getenv("PREFECT_WORK_POOL", "default")
+
+    prefect_sample_eia_flow_to_csv.deploy(
         name=deployment_name,
-        schedule=schedule,
-        work_queue_name="default",
+        work_pool_name=work_pool,
+        schedules=[schedule],
         tags=["sample", "eia", "csv", "one-time"],
+        build=False,
+        push=False,
     )
 
-    dep.apply()
-    print("Scheduled:", deployment_name, "at", dtstart.isoformat())
+    print(f"Scheduled deployment '{deployment_name}' at {dtstart.isoformat()} in work pool '{work_pool}'")
 
 
-def create_today_schedules():
+def create_today_schedules() -> None:
     now = datetime.now(TZ)
 
     targets = [
@@ -104,5 +110,4 @@ def create_today_schedules():
 
 
 if __name__ == "__main__":
-    # creates runs for the times that have not happened yet, instant go if they already happend
     create_today_schedules()
