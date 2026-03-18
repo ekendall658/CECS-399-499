@@ -1,11 +1,16 @@
+from pathlib import Path
 import pandas as pd
-import os
 
-INPUT_FILE = "tva_eia_21_25.csv"
-OUTPUT_FILE = "tva_eia_21_25_utc.csv"
+INPUT_FILE = Path("local_data/bronze/tva_eia_21_25.csv")
+OUTPUT_FILE = Path("local_data/silver/tva_eia_21_25_utc.csv")
 
 
 def convert_eia_to_utc(input_file=INPUT_FILE, output_file=OUTPUT_FILE):
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
     df = pd.read_csv(input_file)
 
     df["timestamp"] = pd.to_datetime(df["timestamp"])
@@ -36,10 +41,9 @@ def convert_eia_to_utc(input_file=INPUT_FILE, output_file=OUTPUT_FILE):
         if col != "timestamp":
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    save_path = os.path.join(os.getcwd(), output_file)
-    df.to_csv(save_path, index=False)
+    df.to_csv(output_file, index=False)
 
-    print(f"SUCCESS: Data saved to {save_path}")
+    print(f"SUCCESS: Data saved to {output_file}")
     print(df.info())
     print(df.head())
 
