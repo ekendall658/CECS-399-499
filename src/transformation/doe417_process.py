@@ -3,12 +3,15 @@ import numpy as np
 from pathlib import Path
 
 # =========================================================
-# STEP 1: Read Files and Clean Data
+# STEP 1: Set Paths and Load Data
 # =========================================================
 
+# Directory containing the raw data files
 BASE_DIR = Path("local_data/bronze")
-OUTPUT_CSV = Path("local_data/silver/tn_weather_weighted_final.csv")
+# Final output path for the processed Tennessee dataset
+OUTPUT_CSV = Path("local_data/silver/doe417_tennessee_cleaned_final.csv")
 
+# List of raw Excel files to be processed
 files = [
     BASE_DIR / "2021_DOE417.xls",
     BASE_DIR / "2022_DOE417.xls",
@@ -17,14 +20,14 @@ files = [
 
 all_raw_data = []
 
-print("Loading files and cleaning Excel errors...")
+print("Loading files and performing data cleaning...")
 
 for file in files:
     try:
-        # Read Excel; header=1 skips the first title row
+        # Read Excel; header=1 skips the initial metadata/title row
         df = pd.read_excel(file, header=1)
 
-        # Standardize known inconsistent column names
+        # Standardize column names by removing trailing spaces and aligning keys
         rename_map = {
             "Event Month": "Month",
             "Date Event Began ": "Date Event Began",
@@ -38,71 +41,48 @@ for file in files:
         }
         df = df.rename(columns=rename_map)
 
-        # Clean placeholder/error values
+        # Clean placeholder or error strings by converting them to standard NaN values
         df = df.replace(
             ['Unknown', '#NAME?', 'unknown', 'n/a', 'N/A', 'NA', 'UNK'],
             np.nan
         )
 
-        # Convert affected customers to numeric
+        # Ensure customer outage data is numeric to support quantitative analysis
         if "Number of Customers Affected" in df.columns:
             df["Number of Customers Affected"] = pd.to_numeric(
                 df["Number of Customers Affected"],
                 errors="coerce"
             ).fillna(0)
 
-        # Tag source year from filename
+        # Track the source year based on the filename
         df["source_year"] = file.stem[:4]
 
         # -------------------------------------------------
-        # STEP 1B: Convert local event times to UTC
-        # Tennessee is primarily America/Chicago
+        # STEP 1B: Time Zone Correction (Local to UTC)
         # -------------------------------------------------
-
-        # Start timestamp
+        
+        # Process event start timestamps
         if "Date Event Began" in df.columns and "Time Event Began" in df.columns:
-            df["event_start_local"] = pd.to_datetime(
-                df["Date Event Began"].astype(str).str.strip() + " " +
+            df["event_start_utc"] = pd.to_datetime(
+                df["Date Event Began"].astype(str).str.strip() + " " + 
                 df["Time Event Began"].astype(str).str.strip(),
                 errors="coerce"
             )
+            # Localize to Central Time (observed) and convert to UTC for standardization
+            df["event_start_utc"] = df["event_start_utc"].dt.tz_localize(
+                "America/Chicago", ambiguous="NaT", nonexistent="NaT"
+            ).dt.tz_convert("UTC")
 
-            df["event_start_local"] = df["event_start_local"].dt.tz_localize(
-                "America/Chicago",
-                ambiguous="NaT",
-                nonexistent="NaT"
-            )
-
-            df["event_start_utc"] = df["event_start_local"].dt.tz_convert("UTC")
-
-        else:
-            df["event_start_local"] = pd.NaT
-            df["event_start_utc"] = pd.NaT
-
-        # End timestamp
+        # Process restoration timestamps
         if "Date of Restoration" in df.columns and "Time of Restoration" in df.columns:
-            df["event_end_local"] = pd.to_datetime(
-                df["Date of Restoration"].astype(str).str.strip() + " " +
+            df["event_end_utc"] = pd.to_datetime(
+                df["Date of Restoration"].astype(str).str.strip() + " " + 
                 df["Time of Restoration"].astype(str).str.strip(),
                 errors="coerce"
             )
-
-            df["event_end_local"] = df["event_end_local"].dt.tz_localize(
-                "America/Chicago",
-                ambiguous="NaT",
-                nonexistent="NaT"
-            )
-
-            df["event_end_utc"] = df["event_end_local"].dt.tz_convert("UTC")
-
-        else:
-            df["event_end_local"] = pd.NaT
-            df["event_end_utc"] = pd.NaT
-
-        # Optional outage duration in hours
-        df["outage_duration_hours"] = (
-            df["event_end_utc"] - df["event_start_utc"]
-        ).dt.total_seconds() / 3600
+            df["event_end_utc"] = df["event_end_utc"].dt.tz_localize(
+                "America/Chicago", ambiguous="NaT", nonexistent="NaT"
+            ).dt.tz_convert("UTC")
 
         all_raw_data.append(df)
         print(f"Loaded: {file}")
@@ -110,116 +90,41 @@ for file in files:
     except Exception as e:
         print(f"Error loading {file}: {e}")
 
-if not all_raw_data:
-    raise ValueError("No DOE-417 files were loaded successfully.")
-
-# Combine all years
-df_master_raw = pd.concat(all_raw_data, ignore_index=True)
+# Consolidate all annual data into a single master DataFrame
+df_master = pd.concat(all_raw_data, ignore_index=True)
 
 # =========================================================
-# STEP 2: Filter for Tennessee Weather
+# STEP 2: Geographic Filtering
 # =========================================================
 
-weather_keywords = [
-    'weather', 'storm', 'wind', 'ice', 'snow',
-    'heat', 'cold', 'flood', 'tornado'
-]
-
-# Make sure needed columns exist
-for col in ["Area Affected", "Event Type", "Alert Criteria"]:
-    if col not in df_master_raw.columns:
-        raise KeyError(f"Required column not found: {col}")
-
-# Keep only Tennessee-related rows
-df_tn = df_master_raw[
-    df_master_raw["Area Affected"].astype(str).str.contains(
+# Filter for all event records pertaining to the state of Tennessee
+# This captures all grid-impacting events regardless of specific type
+df_final = df_master[
+    df_master["Area Affected"].astype(str).str.contains(
         "Tennessee", case=False, na=False
     )
 ].copy()
 
-# Keep only rows that mention weather-related events
-weather_pattern = "|".join(weather_keywords)
-
-df_tn_weather_base = df_tn[
-    df_tn["Event Type"].astype(str).str.contains(weather_pattern, case=False, na=False) |
-    df_tn["Alert Criteria"].astype(str).str.contains(weather_pattern, case=False, na=False)
-].copy()
-
 # =========================================================
-# STEP 3: Split into 10 City DataFrames
+# STEP 3: Missing Value Imputation
 # =========================================================
 
-city_mapping = {
-    "Nashville": ["Nashville", "Davidson"],
-    "Memphis": ["Memphis", "Shelby"],
-    "Knoxville": ["Knoxville", "Knox"],
-    "Chattanooga": ["Chattanooga", "Hamilton"],
-    "Clarksville": ["Clarksville", "Montgomery"],
-    "Murfreesboro": ["Murfreesboro", "Rutherford"],
-    "Franklin": ["Franklin", "Williamson"],
-    "Johnson City": ["Johnson City", "Washington", "Carter", "Sullivan"],
-    "Jackson": ["Jackson", "Madison"],
-    "Bartlett": ["Bartlett", "Shelby"]
+# Fill null values with standard placeholders to maintain dataset consistency
+fill_values = {
+    "Event Type": "System Operations/Other",
+    "Alert Criteria": "Not Specified",
+    "Number of Customers Affected": 0
 }
-
-print("Splitting data into 10 city dataframes...")
-city_df_list = []
-
-for city, keywords in city_mapping.items():
-    pattern = "|".join(keywords)
-
-    mask = df_tn_weather_base["Area Affected"].astype(str).str.contains(
-        pattern, case=False, na=False
-    )
-
-    df_temp = df_tn_weather_base[mask].copy()
-    df_temp["City"] = city
-    city_df_list.append(df_temp)
-
-if not city_df_list:
-    raise ValueError("No city-level Tennessee weather data was created.")
-
-df_split_combined = pd.concat(city_df_list, ignore_index=True)
+df_final = df_final.fillna(value=fill_values)
 
 # =========================================================
-# STEP 4: Add Population Data
+# STEP 4: Export Processed Data
 # =========================================================
 
-pop_dict = {
-    "City": [
-        "Nashville", "Memphis", "Knoxville", "Chattanooga",
-        "Clarksville", "Murfreesboro", "Franklin",
-        "Johnson City", "Jackson", "Bartlett"
-    ],
-    "2021": [678134, 633104, 193598, 181163, 170912, 156675, 83096, 67859, 67187, 56998],
-    "2022": [683622, 628127, 195889, 184086, 176974, 162398, 85000, 68500, 67500, 57500],
-    "2023": [708772, 606551, 200595, 193802, 190229, 172029, 90388, 74263, 69578, 56467],
-    "2024": [712000, 604000, 201000, 195000, 192000, 174000, 91000, 74500, 69700, 56300],
-    "2025": [715000, 602000, 202000, 196000, 194000, 175000, 92000, 74800, 69800, 56200]
-}
-
-df_pop = pd.DataFrame(pop_dict).melt(
-    id_vars="City",
-    var_name="Year",
-    value_name="Population"
-)
-
-df_split_combined["Year"] = df_split_combined["source_year"].astype(str)
-df_pop["Year"] = df_pop["Year"].astype(str)
-
-df_final = pd.merge(
-    df_split_combined,
-    df_pop,
-    on=["City", "Year"],
-    how="left"
-)
-
-# =========================================================
-# STEP 5: Export Final File
-# =========================================================
-
+# Ensure the output directory exists before writing the CSV
 OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
 df_final.to_csv(OUTPUT_CSV, index=False)
 
-print(f"Done! Final file saved as: {OUTPUT_CSV}")
-print(f"Final row count: {len(df_final)}")
+print("-" * 30)
+print(f"Success: Processed file saved to {OUTPUT_CSV}")
+print(f"Total Tennessee records: {len(df_final)}")
