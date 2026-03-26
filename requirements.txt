@@ -4,3 +4,9 @@ requests>=2.31
 pytz>=2023.3
 pyarrow>=14.0.0
 griffe<1.0
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+python-dotenv
+anthropic
