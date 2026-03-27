@@ -119,6 +119,7 @@ print("Sample stats for engineered features:")
 print(df[feature_cols].describe().round(3))
 print(f"\nNull counts after feature engineering:\n{df[feature_cols].isnull().sum()}")
 
+OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
 df.to_csv(OUTPUT_CSV)
 print(f"\nSaved to: {OUTPUT_CSV}")
 print(f"Output shape: {df.shape} ({df.shape[1]} total columns)")
