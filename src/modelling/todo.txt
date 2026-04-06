@@ -5,4 +5,4 @@ Hello, this is my to do list for next time.
 3. Verify the validity of all of my primary and foreign keys
 4. Check the data validity
 5. Restructure Code to function as a series of .py files with better documentation
-6. 
+6. Add Humidity and Net Generation to the correct tables
