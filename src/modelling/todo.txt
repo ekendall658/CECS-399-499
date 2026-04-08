@@ -6,3 +6,9 @@ Hello, this is my to do list for next time.
 4. Check the data validity
 5. Restructure Code to function as a series of .py files with better documentation
 6. Add Humidity and Net Generation to the correct tables
+
+Garrett To-Do.
+1. Lat/Long not carrying over after merge
+2. weekend mean is 0 for anomaly/not
+3. interpret results 
+4. verify txt.requirements
