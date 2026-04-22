@@ -1,11 +1,25 @@
+
+from dotenv import load_dotenv
+load_dotenv(dotenv_path="../.env") 
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from database import AsyncSessionLocal
+
+from chatbot_implementation.database import AsyncSessionLocal
+from chatbot_implementation.routers.chat import router as chat_router
 
 app = FastAPI()
 
-#FastAPI will handle opening/closing the session per request
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat_router)
+
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
@@ -14,12 +28,3 @@ async def get_db():
 async def test_connection(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT 1"))
     return {"status": "connected", "result": result.scalar()}
-
-@app.get("/query")
-async def run_query(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        text("SELECT * FROM your_table WHERE county = :county"),
-        {"county": "Knox"}
-    )
-    rows = result.fetchall()
-    return {"rows": [dict(r._mapping) for r in rows]}

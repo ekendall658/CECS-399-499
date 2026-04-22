@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from db.orchestrator.graph import agent_graph
+from chatbot_implementation.orchestrator.graph import agent_graph
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -9,11 +9,11 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    intent: str | None
-    query_plan: dict | None
-    sql_result: list | None
-    validation_flags: dict | None
-    chart_data: dict | None
+    intent: str | None = None
+    query_plan: dict | None = None
+    sql_result: list | None = None
+    validation_flags: dict | None = None
+    chart_data: dict | None = None
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -22,11 +22,9 @@ async def chat(request: ChatRequest):
             "user_question": request.question,
             "intent": None,
             "query_plan": None,
-            "sql_query": None,
             "sql_result": None,
             "validation_flags": None,
             "final_answer": None,
-            "chart_data": None,
             "error": None,
         })
     except Exception as e:

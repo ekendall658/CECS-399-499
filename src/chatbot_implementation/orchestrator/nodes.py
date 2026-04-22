@@ -1,26 +1,30 @@
 import json
-from langchain_anthropic import ChatAnthropic
-from.state import AgentState
-from.prompts import INTENT_PROMPT, QUERY_PLAN_PROMPT, SYNTHESIS_PROMPT
-from sqlalchemy import text
-from db.database import get_engine   # update for get_engine at 
+from langchain_groq import ChatGroq
+from chatbot_implementation.orchestrator.state import AgentState
+from chatbot_implementation.orchestrator.prompts import INTENT_PROMPT, QUERY_PLAN_PROMPT, SYNTHESIS_PROMPT
+from chatbot_implementation.database import get_engine
+from sqlalchemy import select, func, column, table
 
-llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")  # using claude, subject ot change
+_llm = None
+
+def get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGroq(model="llama-3.3-70b-versatile")
+    return _llm
 
 
-# node 1 intent classificaiton
 def classify_intent(state: AgentState) -> AgentState:
-    chain = INTENT_PROMPT | llm
+    chain = INTENT_PROMPT | get_llm()
     result = chain.invoke({"question": state["user_question"]})
     return {**state, "intent": result.content.strip()}
 
 
-# query planning
 def plan_query(state: AgentState) -> AgentState:
     if state.get("intent") == "out_of_scope":
         return {**state, "final_answer": "That question is outside the scope of this tool."}
 
-    chain = QUERY_PLAN_PROMPT | llm
+    chain = QUERY_PLAN_PROMPT | get_llm()
     result = chain.invoke({
         "question": state["user_question"],
         "intent": state["intent"]
@@ -33,48 +37,51 @@ def plan_query(state: AgentState) -> AgentState:
     return {**state, "query_plan": plan}
 
 
-# node 3, sql tool 
 def execute_sql(state: AgentState) -> AgentState:
+    if state.get("final_answer") or state.get("error"):
+        return state
+
     plan = state.get("query_plan")
     if not plan:
         return {**state, "error": "No query plan available."}
 
-    # build sql from sqlalchemy
-    # will need to refine for schema we have
-    from sqlalchemy import select, func, column, table
+    try:
+        tbl = table("utility_records",
+                    column("county"), column("service_type"),
+                    column("anomaly_count"), column("date"))
 
-    tbl = table("utility_records",
-                column("county"), column("service_type"),
-                column("anomaly_count"), column("date"))
+        agg_map = {
+            "sum": func.sum, "avg": func.avg,
+            "count": func.count, "none": lambda c: c
+        }
+        agg_fn = agg_map.get(plan.get("aggregation", "none"), lambda c: c)
+        metric_col = column(plan["metric"])
 
-    agg_map = {
-        "sum": func.sum, "avg": func.avg,
-        "count": func.count, "none": lambda c: c
-    }
-    agg_fn = agg_map.get(plan.get("aggregation", "none"), lambda c: c)
-    metric_col = column(plan["metric"])
+        stmt = select(
+            column(plan["dimension"]),
+            agg_fn(metric_col).label("value")
+        ).select_from(tbl)
 
-    stmt = select(
-        column(plan["dimension"]),
-        agg_fn(metric_col).label("value")
-    ).select_from(tbl)
+        for col, val in (plan.get("filters") or {}).items():
+            stmt = stmt.where(column(col) == val)
 
-    #filter
-    for col, val in (plan.get("filters") or {}).items():
-        stmt = stmt.where(column(col) == val)
+        stmt = stmt.group_by(column(plan["dimension"])).limit(500)
 
-    stmt = stmt.group_by(column(plan["dimension"])).limit(500)
+        engine = get_engine()
+        with engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
+            sql_result = [dict(row) for row in rows]
 
-    engine = get_engine()
-    with engine.connect() as conn:
-        rows = conn.execute(stmt).mappings().all()
-        result = [dict(row) for row in rows]
+        return {**state, "sql_result": sql_result}
 
-    return {**state, "sql_result": result}
+    except Exception as e:
+        return {**state, "error": f"SQL execution failed: {str(e)}"}
 
 
-# node 4 validation - NO LLM
 def validate_result(state: AgentState) -> AgentState:
+    if state.get("final_answer") or state.get("error"):
+        return state
+
     result = state.get("sql_result", [])
     flags = {}
 
@@ -89,25 +96,27 @@ def validate_result(state: AgentState) -> AgentState:
         flags["null_heavy"] = True
 
     values = [row["value"] for row in result if row.get("value") is not None]
-    if values:
+    if len(values) > 1:
         avg = sum(values) / len(values)
-        outliers = [v for v in values if abs(v - avg) > 3 * (avg or 1)]
-        if outliers:
-            flags["extreme_outliers"] = True
+        if avg != 0:
+            outliers = [v for v in values if abs(v - avg) > 3 * abs(avg)]
+            if outliers:
+                flags["extreme_outliers"] = True
 
     return {**state, "validation_flags": flags}
 
 
-# node answer synthesis
 def synthesize_answer(state: AgentState) -> AgentState:
-    if state.get("final_answer"):  # pre set
+    if state.get("final_answer"):
         return state
+    if state.get("error"):
+        return {**state, "final_answer": f"An error occurred: {state['error']}"}
 
-    chain = SYNTHESIS_PROMPT | llm
+    chain = SYNTHESIS_PROMPT | get_llm()
     result = chain.invoke({
         "question": state["user_question"],
         "query_plan": json.dumps(state.get("query_plan")),
-        "sql_result": json.dumps(state.get("sql_result", [])[:50]), 
+        "sql_result": json.dumps(state.get("sql_result", [])[:50]),
         "validation_flags": json.dumps(state.get("validation_flags", {}))
     })
     return {**state, "final_answer": result.content}
