@@ -1,0 +1,23 @@
+import boto3
+
+import os
+
+s3 = boto3.client(
+    's3',
+    region_name='us-east-2',
+    aws_access_key_id='',
+    aws_secret_access_key=''
+)
+
+bucket_name = 'energy-lake-cecs'
+local_folder = '.'
+
+for root, dirs, files in os.walk(local_folder):
+    dirs[:] = [d for d in dirs if d not in ['.git', '.github']]
+    for file in files:
+        local_path = os.path.join(root, file)
+        s3_key = os.path.relpath(local_path, local_folder).replace("\\", "/")
+        print(f"Uploading {s3_key}...")
+        s3.upload_file(local_path, bucket_name, s3_key)
+
+print("✅ Done!")
