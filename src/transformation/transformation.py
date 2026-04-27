@@ -17,8 +17,8 @@ from resolve_EIA_missing import *
 s3 = boto3.client(
     's3',
     region_name='us-east-2',
-    aws_access_key_id='YOUR_ACCESS_KEY_HERE',
-    aws_secret_access_key='YOUR_SECRET_KEY_HERE'
+    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
 )
 bucket_name = 'energy-lake-cecs'
 
