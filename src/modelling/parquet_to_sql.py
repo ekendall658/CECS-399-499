@@ -37,6 +37,7 @@ fact_weather = pd.read_parquet("../../local_data/gold/fact_weather_city_hourly.p
 fact_energy_load = pd.read_parquet("../../local_data/gold/fact_energy_load_hourly.parquet")
 fact_energy_features = pd.read_parquet("../../local_data/gold/fact_energy_features_hourly.parquet")
 fact_energy_event = pd.read_parquet("../../local_data/gold/fact_energy_event.parquet")
+fact_anomaly = pd.read_parquet("../../local_data/gold/fact_anomaly_detection.parquet")
 
 # Helper Functions
 
@@ -167,6 +168,23 @@ CREATE TABLE IF NOT EXISTS fact_grid_alert_event (
 );
 """
 
+create_fact_table = """
+CREATE TABLE IF NOT EXISTS fact_anomaly_detection (
+    time_key VARCHAR NOT NULL,
+    source_id VARCHAR NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    actual_outage_target BIGINT,
+    anomaly_score DOUBLE PRECISION,
+    anomaly_flag BIGINT,
+    primary_driver VARCHAR,
+    secondary_driver VARCHAR,
+    tertiary_driver VARCHAR,
+    raw_demand_delta DOUBLE PRECISION,
+    raw_balance_delta DOUBLE PRECISION,
+    PRIMARY KEY (time_key, source_id, timestamp)
+);
+"""
+
 # Schema Design - Insertion
 
 insert_cities = """
@@ -284,6 +302,24 @@ INSERT INTO fact_grid_alert_event (
 )
 VALUES %s
 ON CONFLICT DO NOTHING;
+"""
+
+insert_fact = """
+INSERT INTO fact_anomaly_detection (
+    time_key,
+    source_id,
+    timestamp,
+    actual_outage_target,
+    anomaly_score,
+    anomaly_flag,
+    primary_driver,
+    secondary_driver,
+    tertiary_driver,
+    raw_demand_delta,
+    raw_balance_delta
+)
+VALUES %s
+ON CONFLICT (time_key, source_id, timestamp) DO NOTHING;
 """
 
 # Create dim_cities
@@ -588,6 +624,41 @@ try:
         execute_values(cur, insert_fact_grid_alert_event, rows, page_size=1000)
 
     conn.commit()
+except Exception as e:
+    conn.rollback()
+    print("Insert failed:", e)
+
+# Ensure correct types
+fact_anomaly["timestamp"] = pd.to_datetime(fact_anomaly["timestamp"], errors="coerce")
+fact_anomaly["actual_outage_target"] = pd.to_numeric(fact_anomaly["actual_outage_target"], errors="coerce")
+fact_anomaly["anomaly_score"] = pd.to_numeric(fact_anomaly["anomaly_score"], errors="coerce")
+fact_anomaly["anomaly_flag"] = pd.to_numeric(fact_anomaly["anomaly_flag"], errors="coerce")
+
+# Optional: dedupe at the grain level
+fact_anomaly = fact_anomaly.drop_duplicates(subset=[
+    "time_key", "source_id", "timestamp"
+])
+
+# Convert NaN/NaT → None
+rows = []
+for row in fact_anomaly.itertuples(index=False, name=None):
+    cleaned = tuple(None if pd.isna(v) else v for v in row)
+    rows.append(cleaned)
+
+# Insert
+try:
+    with conn.cursor() as cur:
+        cur.execute(create_fact_table)
+
+        execute_values(
+            cur,
+            insert_fact,   # same VALUES %s style
+            rows,
+            page_size=1000
+        )
+
+    conn.commit()
+
 except Exception as e:
     conn.rollback()
     print("Insert failed:", e)
