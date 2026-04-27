@@ -37,16 +37,18 @@ def plan_query(state: AgentState) -> AgentState:
     print("======================")
 
     # Strip markdown code blocks if LLM wraps response in them
-    if raw.startswith("```"):
+    if "```" in raw:
+        # Extract content between the first ``` and last ```
         raw = raw.split("```")[1]
-        if raw.startswith("json"):
+        # Remove language identifier like "json" at the start
+        if raw.lower().startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
 
     try:
         plan = json.loads(raw)
-    except json.JSONDecodeError:
-        return {**state, "error": f"Failed to parse query plan. Raw output was: {raw}"}
+    except json.JSONDecodeError as e:
+        return {**state, "error": f"Failed to parse query plan. Error: {str(e)}. Raw: {raw}"}
 
     return {**state, "query_plan": plan}
 
