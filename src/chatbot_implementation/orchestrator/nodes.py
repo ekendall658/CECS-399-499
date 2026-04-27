@@ -29,13 +29,26 @@ def plan_query(state: AgentState) -> AgentState:
         "question": state["user_question"],
         "intent": state["intent"]
     })
+
+    raw = result.content.strip()
+    #print statement to see what its runnign
+    print("=== RAW LLM OUTPUT ===")
+    print(repr(raw))
+    print("======================")
+
+    # Strip markdown code blocks if LLM wraps response in them
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
     try:
-        plan = json.loads(result.content)
+        plan = json.loads(raw)
     except json.JSONDecodeError:
-        return {**state, "error": "Failed to parse query plan."}
+        return {**state, "error": f"Failed to parse query plan. Raw output was: {raw}"}
 
     return {**state, "query_plan": plan}
-
 
 def execute_sql(state: AgentState) -> AgentState:
     if state.get("final_answer") or state.get("error"):
