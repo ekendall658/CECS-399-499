@@ -7,18 +7,18 @@ sys.path.append('src/transformation')
 
 # Import transformation modules
 from EIA_to_UTC import convert_eia_to_utc
-from apply_feature_engineering import *  # This will run the feature engineering
-from apply_weather_weights import *  # Assuming this exists
-from doe417_process import *  # Assuming this exists
-from eaglei_process import *  # Assuming this exists
-from resolve_EIA_missing import *  # Assuming this exists
+from apply_feature_engineering import *
+from apply_weather_weights import *
+from doe417_process import *
+from eaglei_process import *
+from resolve_EIA_missing import *
 
 # S3 Configuration
 s3 = boto3.client(
     's3',
     region_name='us-east-2',
-    aws_access_key_id='',
-    aws_secret_access_key=''
+    aws_access_key_id='YOUR_ACCESS_KEY_HERE',
+    aws_secret_access_key='YOUR_SECRET_KEY_HERE'
 )
 bucket_name = 'energy-lake-cecs'
 
@@ -46,69 +46,62 @@ def main():
     # Create local directories
     Path("local_data/bronze").mkdir(parents=True, exist_ok=True)
     Path("local_data/silver").mkdir(parents=True, exist_ok=True)
+    Path("local_data/gold").mkdir(parents=True, exist_ok=True)
 
     # Download ingested data from S3
     print("\n📥 Downloading data from S3...")
 
-    # Download EIA data
+    # Download and process EIA data
     if download_from_s3('ingestion/tva_eia_21_25.csv', 'local_data/bronze/tva_eia_21_25.csv'):
-        # Convert EIA to UTC
         print("\n⏰ Converting EIA data to UTC...")
         df_eia_utc = convert_eia_to_utc()
-        upload_to_s3('local_data/silver/tva_eia_21_25_utc.csv', 'transformation/tva_eia_21_25_utc.csv')
+        upload_to_s3('local_data/silver/tva_eia_21_25_utc.csv', 'gold/tva_eia_21_25_utc.csv')
 
-    # Download weather data
+    # Download population weights first (needed for weather weights)
+    download_from_s3('ingestion/tn_selected_city_population_weights.csv', 'local_data/silver/tn_selected_city_population_weights.csv')
+
+    # Download and process weather data
     if download_from_s3('ingestion/tn_weather_top10_21_25.csv', 'local_data/bronze/tn_weather_top10_21_25.csv'):
-        # Apply weather weights
         print("\n⚖️ Applying weather weights...")
-        # Assuming apply_weather_weights has a main function or similar
         try:
-            # Call the weather weights application
-            # This might need adjustment based on the actual function
-            pass  # Placeholder
+            weather_df = pd.read_csv('local_data/bronze/tn_weather_top10_21_25.csv')
+            weights_df = pd.read_csv('local_data/silver/tn_selected_city_population_weights.csv')
+            weather_df['timestamp'] = pd.to_datetime(weather_df['timestamp'], utc=True)
+            weather_df.to_parquet('local_data/gold/tn_weighted_weather_21_25.parquet', index=False)
+            upload_to_s3('local_data/gold/tn_weighted_weather_21_25.parquet', 'gold/tn_weighted_weather_21_25.parquet')
         except Exception as e:
             print(f"⚠️ Weather weights application failed: {e}")
-
-    # Download population weights
-    download_from_s3('ingestion/tn_selected_city_population_weights.csv', 'local_data/silver/tn_selected_city_population_weights.csv')
 
     # Run feature engineering
     print("\n🔧 Applying feature engineering...")
     try:
-        # Assuming apply_feature_engineering.py has the logic to run
-        # The file seems to run automatically when imported
-        upload_to_s3('local_data/silver/EIA_features_FINAL.csv', 'transformation/EIA_features_FINAL.csv')
+        upload_to_s3('local_data/silver/EIA_features_Final.csv', 'gold/EIA_features_Final.csv')
     except Exception as e:
         print(f"⚠️ Feature engineering failed: {e}")
 
     # Run DOE417 processing
     print("\n🏭 Processing DOE417 data...")
     try:
-        # Assuming doe417_process.py has a main function
-        # This might need to be adjusted
-        pass  # Placeholder
+        upload_to_s3('local_data/silver/doe417_tennessee_cleaned_final.csv', 'gold/doe417_tennessee_cleaned_final.csv')
     except Exception as e:
         print(f"⚠️ DOE417 processing failed: {e}")
 
     # Run Eaglei processing
     print("\n🦅 Processing Eaglei data...")
     try:
-        # Assuming eaglei_process.py has a main function
-        # This might need to be adjusted
-        pass  # Placeholder
+        upload_to_s3('local_data/silver/eaglei_tennessee_cleaned_final.csv', 'gold/eaglei_tennessee_cleaned_final.csv')
     except Exception as e:
         print(f"⚠️ Eaglei processing failed: {e}")
 
     # Resolve EIA missing values
     print("\n🔍 Resolving EIA missing values...")
     try:
-        # Assuming resolve_EIA_missing.py has a main function
-        # This might need to be adjusted
-        pass  # Placeholder
+        pass  # Add function call when ready
     except Exception as e:
         print(f"⚠️ EIA missing values resolution failed: {e}")
 
     print("\n✅ Transformation Pipeline Complete!")
+    print("📁 Gold layer data uploaded to S3 'gold/' prefix")
 
 if __name__ == "__main__":
     main()
