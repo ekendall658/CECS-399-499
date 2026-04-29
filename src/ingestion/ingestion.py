@@ -29,50 +29,36 @@ def upload_to_s3(local_path, s3_key):
     except Exception as e:
         print(f"❌ Failed to upload {local_path}: {e}")
 
-def fetch_weather_weights():
-    """Wrapper to get weather weights data"""
-    # This mimics the logic from fetch_weather_weights.py
-    INPUT_CSV = Path("local_data/bronze/Tennessee_pop.csv")
-    if not INPUT_CSV.exists():
-        print(f"⚠️ Population data not found: {INPUT_CSV}")
-        return None
-
-    # Run the processing logic (simplified version)
-    df = pd.read_csv(INPUT_CSV)
-    # Add your processing logic here or call the functions from the module
-    # For now, return the processed dataframe
-    return df
-
 def main():
     print("🚀 Starting Ingestion Pipeline...")
+
+    # Ensure local folders exist
+    Path("local_data/bronze").mkdir(parents=True, exist_ok=True)
+    Path("local_data/silver").mkdir(parents=True, exist_ok=True)
 
     # Fetch EIA data
     print("\n📊 Fetching EIA data...")
     df_eia = fetch_eia_master_data()
     if df_eia is not None:
-        eia_file = 'tva_eia_21_25.csv'
+        eia_file = Path("local_data/bronze/tva_eia_21_25.csv")
         df_eia.to_csv(eia_file, index=False)
-        upload_to_s3(eia_file, f'ingestion/{eia_file}')
-        os.remove(eia_file)  # Clean up local file
+        upload_to_s3(str(eia_file), f'ingestion/{eia_file.name}')
 
     # Fetch weather data
     print("\n🌤️ Fetching weather data...")
     df_weather = fetch_comprehensive_weather()
     if df_weather is not None:
-        weather_file = 'tn_weather_top10_21_25.csv'
+        weather_file = Path("local_data/bronze/tn_weather_top10_21_25.csv")
         df_weather.to_csv(weather_file, index=False)
-        upload_to_s3(weather_file, f'ingestion/{weather_file}')
-        os.remove(weather_file)  # Clean up local file
+        upload_to_s3(str(weather_file), f'ingestion/{weather_file.name}')
 
     # Fetch weather weights
     print("\n⚖️ Processing weather weights...")
     try:
-        # Run the weather weights processing
-        fetch_weather_weights.main()  # Call the main function
-        weights_file = 'local_data/silver/tn_selected_city_population_weights.csv'
-        if os.path.exists(weights_file):
-            upload_to_s3(weights_file, f'ingestion/tn_selected_city_population_weights.csv')
-            # Don't remove since it's in local_data
+        fetch_weather_weights.main()  # Call the module's main function
+        weights_file = Path('local_data/silver/tn_selected_city_population_weights.csv')
+        if weights_file.exists():
+            upload_to_s3(str(weights_file), f'ingestion/{weights_file.name}')
     except Exception as e:
         print(f"⚠️ Weather weights processing failed: {e}")
 
