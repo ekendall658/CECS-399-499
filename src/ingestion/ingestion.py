@@ -33,14 +33,14 @@ def main():
     print("🚀 Starting Ingestion Pipeline...")
 
     # Ensure local folders exist
-    Path("local_data/bronze").mkdir(parents=True, exist_ok=True)
-    Path("local_data/silver").mkdir(parents=True, exist_ok=True)
+    Path("bronze").mkdir(parents=True, exist_ok=True)
+    Path("silver").mkdir(parents=True, exist_ok=True)
 
     # Fetch EIA data
     print("\n📊 Fetching EIA data...")
     df_eia = fetch_eia_master_data()
     if df_eia is not None:
-        eia_file = Path("local_data/bronze/tva_eia_21_25.csv")
+        eia_file = Path("bronze/tva_eia_21_25.csv")
         df_eia.to_csv(eia_file, index=False)
         upload_to_s3(str(eia_file), f'ingestion/{eia_file.name}')
 
@@ -48,7 +48,7 @@ def main():
     print("\n🌤️ Fetching weather data...")
     df_weather = fetch_comprehensive_weather()
     if df_weather is not None:
-        weather_file = Path("local_data/bronze/tn_weather_top10_21_25.csv")
+        weather_file = Path("bronze/tn_weather_top10_21_25.csv")
         df_weather.to_csv(weather_file, index=False)
         upload_to_s3(str(weather_file), f'ingestion/{weather_file.name}')
 
@@ -56,7 +56,7 @@ def main():
     print("\n⚖️ Processing weather weights...")
     try:
         fetch_weather_weights.main()  # Call the module's main function
-        weights_file = Path('local_data/silver/tn_selected_city_population_weights.csv')
+        weights_file = Path('silver/tn_selected_city_population_weights.csv')
         if weights_file.exists():
             upload_to_s3(str(weights_file), f'ingestion/{weights_file.name}')
     except Exception as e:
