@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
-load_dotenv()
+from pathlib import Path
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 import os
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
