@@ -36,41 +36,21 @@ def main():
     Path("local_data/bronze").mkdir(parents=True, exist_ok=True)
     Path("local_data/silver").mkdir(parents=True, exist_ok=True)
 
-    # Check if EIA_API_KEY is available
-    eia_key = os.getenv('EIA_API_KEY')
-    if not eia_key:
-        print("\n⚠️ EIA_API_KEY not set. Using test data instead.")
-        # Create minimal test CSV
-        test_df = pd.DataFrame({
-            'timestamp': pd.date_range('2021-01-01', periods=10, freq='H'),
-            'net_generation_mwh': [1000] * 10,
-            'net_interchange_mwh': [50] * 10,
-            'actual_demand_mwh': [1050] * 10,
-            'demand_forecast_mwh': [1040] * 10
-        })
+    # Fetch EIA data
+    print("\n📊 Fetching EIA data...")
+    df_eia = fetch_eia_master_data()
+    if df_eia is not None:
         eia_file = Path("local_data/bronze/tva_eia_21_25.csv")
-        test_df.to_csv(eia_file, index=False)
-        print(f"✅ Created test EIA file: {eia_file}")
+        df_eia.to_csv(eia_file, index=False)
         upload_to_s3(str(eia_file), f'ingestion/{eia_file.name}')
-    else:
-        # Fetch EIA data
-        print("\n📊 Fetching EIA data...")
-        df_eia = fetch_eia_master_data()
-        if df_eia is not None:
-            eia_file = Path("local_data/bronze/tva_eia_21_25.csv")
-            df_eia.to_csv(eia_file, index=False)
-            upload_to_s3(str(eia_file), f'ingestion/{eia_file.name}')
 
     # Fetch weather data
     print("\n🌤️ Fetching weather data...")
-    try:
-        df_weather = fetch_comprehensive_weather()
-        if df_weather is not None:
-            weather_file = Path("local_data/bronze/tn_weather_top10_21_25.csv")
-            df_weather.to_csv(weather_file, index=False)
-            upload_to_s3(str(weather_file), f'ingestion/{weather_file.name}')
-    except Exception as e:
-        print(f"⚠️ Weather fetch skipped: {e}")
+    df_weather = fetch_comprehensive_weather()
+    if df_weather is not None:
+        weather_file = Path("local_data/bronze/tn_weather_top10_21_25.csv")
+        df_weather.to_csv(weather_file, index=False)
+        upload_to_s3(str(weather_file), f'ingestion/{weather_file.name}')
 
     # Fetch weather weights
     print("\n⚖️ Processing weather weights...")
