@@ -63,14 +63,14 @@ def main():
         upload_to_s3('local_data/silver/tva_eia_21_25_utc.csv', 'silver/tva_eia_21_25_utc.csv')
 
     # Download population weights
-    download_from_s3('bronze/tn_selected_city_population_weights.csv', 'local_data/bronze/tn_selected_city_population_weights.csv')
+    download_from_s3('silver/tn_selected_city_population_weights.csv', 'local_data/silver/tn_selected_city_population_weights.csv')
 
     # Download and process weather data
     if download_from_s3('bronze/tn_weather_top10_21_25.csv', 'local_data/bronze/tn_weather_top10_21_25.csv'):
         print("\n⚖️ Applying weather weights...")
         try:
             weather_df = pd.read_csv('local_data/bronze/tn_weather_top10_21_25.csv')
-            weights_df = pd.read_csv('local_data/bronze/tn_selected_city_population_weights.csv')
+            weights_df = pd.read_csv('local_data/silver/tn_selected_city_population_weights.csv')
             weather_df['timestamp'] = pd.to_datetime(weather_df['timestamp'], utc=True)
             # ✅ keeps local copy, uploads to silver/
             weather_df.to_parquet('local_data/silver/tn_weighted_weather_21_25.parquet', index=False)
