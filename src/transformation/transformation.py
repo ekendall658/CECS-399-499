@@ -52,16 +52,16 @@ def main():
     print("\n📥 Downloading data from S3...")
 
     # Download and process EIA data
-    if download_from_s3('ingestion/tva_eia_21_25.csv', 'local_data/bronze/tva_eia_21_25.csv'):
+    if download_from_s3('bronze/tva_eia_21_25.csv', 'local_data/bronze/tva_eia_21_25.csv'):
         print("\n⏰ Converting EIA data to UTC...")
         df_eia_utc = convert_eia_to_utc()
         upload_to_s3('local_data/silver/tva_eia_21_25_utc.csv', 'gold/tva_eia_21_25_utc.csv')
 
     # Download population weights first (needed for weather weights)
-    download_from_s3('ingestion/tn_selected_city_population_weights.csv', 'local_data/silver/tn_selected_city_population_weights.csv')
+    download_from_s3('bronze/tn_selected_city_population_weights.csv', 'local_data/silver/tn_selected_city_population_weights.csv')
 
     # Download and process weather data
-    if download_from_s3('ingestion/tn_weather_top10_21_25.csv', 'local_data/bronze/tn_weather_top10_21_25.csv'):
+    if download_from_s3('bronze/tn_weather_top10_21_25.csv', 'local_data/bronze/tn_weather_top10_21_25.csv'):
         print("\n⚖️ Applying weather weights...")
         try:
             weather_df = pd.read_csv('local_data/bronze/tn_weather_top10_21_25.csv')

@@ -42,7 +42,7 @@ def main():
     if df_eia is not None:
         eia_file = Path("bronze/tva_eia_21_25.csv")
         df_eia.to_csv(eia_file, index=False)
-        upload_to_s3(str(eia_file), f'ingestion/{eia_file.name}')
+        upload_to_s3(str(eia_file), f'bronze/{eia_file.name}')
 
     # Fetch weather data
     print("\n🌤️ Fetching weather data...")
@@ -50,7 +50,7 @@ def main():
     if df_weather is not None:
         weather_file = Path("bronze/tn_weather_top10_21_25.csv")
         df_weather.to_csv(weather_file, index=False)
-        upload_to_s3(str(weather_file), f'ingestion/{weather_file.name}')
+        upload_to_s3(str(weather_file), f'bronze/{weather_file.name}')
 
     # Fetch weather weights
     print("\n⚖️ Processing weather weights...")
@@ -58,7 +58,7 @@ def main():
         fetch_weather_weights.main()  # Call the module's main function
         weights_file = Path('silver/tn_selected_city_population_weights.csv')
         if weights_file.exists():
-            upload_to_s3(str(weights_file), f'ingestion/{weights_file.name}')
+            upload_to_s3(str(weights_file), f'bronze/{weights_file.name}')
     except Exception as e:
         print(f"⚠️ Weather weights processing failed: {e}")
 
